@@ -1,7 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">openGym</string>
-    <string name="title_activity_main">openGym</string>
-    <string name="package_name">ch.duartesantos.opengym</string>
-    <string name="custom_url_scheme">ch.duartesantos.opengym</string>
+    <!-- The launcher label, which is what tells this build apart from a stock
+         openGym on a phone carrying both. capacitor.config.json's appName does
+         not reach here — Capacitor writes strings.xml once, when the platform is
+         first added, and never touches it again. -->
+    <string name="app_name">openGym HR</string>
+    <string name="title_activity_main">openGym HR</string>
+    <!-- package_name / custom_url_scheme follow applicationId (see app/build.gradle),
+         or the deep-link scheme collides with a stock openGym install. -->
+    <string name="package_name">ch.duartesantos.opengym.hr</string>
+    <string name="custom_url_scheme">ch.duartesantos.opengym.hr</string>
 </resources>
