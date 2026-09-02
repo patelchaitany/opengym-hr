@@ -35,7 +35,7 @@ Copy `.env.example` to `.env` and fill in:
 ```
 GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxxxxxxx
-GOOGLE_REDIRECT_URI=http://127.0.0.1:3000/oauth/callback
+GOOGLE_REDIRECT_URI=http://127.0.0.1:3001/oauth/callback
 ```
 
 The redirect URI must exactly match one you add to the OAuth client's

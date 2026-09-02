@@ -54,7 +54,7 @@ npm install
 # 1. On the Fitbit Air, turn ON "share real-time heart rate" so it advertises.
 # 2. Start the server + dashboard:
 npm start
-# open http://127.0.0.1:3000
+# open http://127.0.0.1:3001
 ```
 
 > **macOS first-run note (important).** macOS requires Bluetooth permission for
@@ -96,7 +96,7 @@ Copy `.env.example` → `.env`. All fields are optional:
 
 | Var | Purpose |
 |-----|---------|
-| `PORT`, `HOST` | server bind (default `127.0.0.1:3000`) |
+| `PORT`, `HOST` | server bind (default `0.0.0.0:3001`) |
 | `BLE_NAME_FILTER` | only connect to a device whose name contains this (e.g. `fitbit`) |
 | `BLE_ADDRESS_FILTER` | only connect to this exact BLE address/UUID |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Google Health API (see below) |
@@ -120,7 +120,7 @@ Messages are `{ type, payload, at }`. Types: `snapshot` (sent on connect),
 `heartRate`, `status`, `device`, `battery`, `sensorLocation`, `error`.
 
 ```js
-const ws = new WebSocket('ws://127.0.0.1:3000/ws');
+const ws = new WebSocket('ws://127.0.0.1:3001/ws');
 ws.onmessage = (e) => {
   const { type, payload } = JSON.parse(e.data);
   if (type === 'heartRate') console.log(payload.bpm, 'bpm');

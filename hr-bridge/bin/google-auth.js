@@ -24,7 +24,7 @@ if (!googleConfigured()) {
 
 const client = new GoogleHealthClient();
 const redirect = new URL(config.google.redirectUri);
-const port = Number(redirect.port) || 3000;
+const port = Number(redirect.port) || config.server.port;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
