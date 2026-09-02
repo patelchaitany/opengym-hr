@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.log
+
+# Instance data — users, passkeys, per-user state, session secret, VAPID keys.
+# Never commit this: the upstream fork did, which leaked a real passkey + secret.
+/data/*
+!/data/.gitkeep
+
+# Exercise media (~140 MB), fetched by `docker compose up` on first run.
+/media/img/*
+/media/gif/*
+
+.env
+.DS_Store
+Thumbs.db

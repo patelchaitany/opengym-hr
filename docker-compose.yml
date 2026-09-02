@@ -1,0 +1,79 @@
+name: opengym-hr
+
+services:
+  # One-time: download the exercise images + GIFs into ./media (skipped if already there).
+  # ~140 MB, from github.com/hasaneyldrm/exercises-dataset (CC).
+  media:
+    image: alpine/git
+    volumes:
+      - ./media/img:/out/img
+      - ./media/gif:/out/gif
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$(ls -A /out/img 2>/dev/null)" ]; then
+          echo "↓ Downloading exercise media (~140 MB, one time)…"
+          git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset /tmp/ds
+          cp /tmp/ds/images/*.jpg /out/img/ && cp /tmp/ds/videos/*.gif /out/gif/
+          echo "✓ Exercise media ready ($$(ls /out/img | wc -l) images)."
+        else
+          echo "✓ Exercise media already present — skipping download."
+        fi
+    restart: "no"
+
+  # Passkey auth + per-user data (Node, no framework).
+  # Always built from source: upstream's published images predate the
+  # heart-rate integration, so pulling one would quietly ship an app without it.
+  api:
+    build: ./api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PORT=3000            # internal port (nginx proxies here) — do not change
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data         # users, passkeys, per-user state, session secret — BACK THIS UP
+
+  # Builds the React frontend (multi-stage) and serves it, proxying /api → api
+  # and the exercise media from the shared volume. Single origin for passkeys.
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      media:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      # Where nginx forwards /hr. The default assumes the bridge is running on
+      # the host (`cd hr-bridge && npm start`), which is where it has to be to
+      # reach a Bluetooth radio. Set HR_BRIDGE_HOST=hr:3001 to point at the
+      # containerised simulator instead.
+      - HR_BRIDGE_HOST=${HR_BRIDGE_HOST:-host.docker.internal:3001}
+    extra_hosts:
+      # Docker Desktop provides host.docker.internal already; Linux does not,
+      # and without this line the /hr proxy has nothing to resolve.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./media/img:/usr/share/nginx/html/img:ro
+      - ./media/gif:/usr/share/nginx/html/gif:ro
+
+  # Heart-rate bridge, simulated. Opt-in:
+  #
+  #     HR_BRIDGE_HOST=hr:3001 docker compose --profile sim up
+  #
+  # Streams a plausible lifting session with no strap and no radio, so the whole
+  # pipeline — live bpm, per-set capture, zones, the finish summary — can be
+  # demoed or tested on any machine. For real heart rate, run the bridge on the
+  # host instead (see hr-bridge/Dockerfile for why a container will not do).
+  hr:
+    profiles: ["sim"]
+    build: ./hr-bridge
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+      - HR_SIMULATE=1

@@ -1,0 +1,44 @@
+{
+  "name": "opengym-hr-bridge",
+  "version": "0.1.0",
+  "description": "Live heart rate over Bluetooth (Fitbit Air or any BLE 0x180D device) streamed to openGym, plus steps/history via the Google Health API. REST + WebSocket, with a simulator for hardware-free development.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "fitbit-air": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "start:sim": "HR_SIMULATE=1 node src/index.js",
+    "dev": "node --watch src/index.js",
+    "dev:sim": "HR_SIMULATE=1 node --watch src/index.js",
+    "scan": "node bin/scan.js",
+    "hr": "node bin/hr.js",
+    "auth": "node bin/google-auth.js"
+  },
+  "keywords": [
+    "fitbit",
+    "fitbit-air",
+    "bluetooth",
+    "ble",
+    "heart-rate",
+    "opengym",
+    "gym",
+    "workout",
+    "google-health",
+    "wearable",
+    "websocket"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "open": "^10.1.0",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-26"
+  }
+}

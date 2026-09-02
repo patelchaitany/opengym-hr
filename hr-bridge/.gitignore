@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.log
+
+# OAuth tokens / secrets persisted at runtime
+.tokens.json
+.google-tokens.json
+data/
+
+# OS junk
+.DS_Store
+Thumbs.db

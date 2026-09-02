@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The heart-rate bridge runs on your own machine on your own network, over plain
+  HTTP: http://192.168.1.20:3001. Since Android 9 the system blocks cleartext by
+  default, so without this file the app silently never reaches it and the live
+  feed just says "bridge offline" forever.
+
+  Android's network security config matches by hostname, and there is no syntax
+  for "any address on my LAN" — a home network's addresses are not knowable at
+  build time. So cleartext is permitted, and the app carries no credentials over
+  it: the bridge serves a pulse and nothing else, and openGym's own account
+  traffic (the /api side) does not exist in this build at all — the mobile app
+  keeps its data on the phone.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

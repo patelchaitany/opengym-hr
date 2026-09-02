@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fitbit-air · live heart rate</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --panel: #141922;
+        --panel-2: #1b212c;
+        --text: #e6edf3;
+        --muted: #8b98a9;
+        --accent: #ff4d6d;
+        --accent-2: #3ddc97;
+        --border: #232a36;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 { font-size: 16px; margin: 0; letter-spacing: 0.3px; font-weight: 600; }
+      header .brand { display: flex; align-items: center; gap: 10px; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+      .dot.on { background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); }
+      .status-pill {
+        font-size: 12px; color: var(--muted); padding: 6px 12px;
+        border: 1px solid var(--border); border-radius: 999px; background: var(--panel);
+      }
+      main { max-width: 980px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      .card {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: 16px; padding: 20px;
+      }
+      .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 12px; }
+      .bpm { display: flex; align-items: baseline; gap: 12px; }
+      .bpm .value {
+        font-size: 84px; font-weight: 700; line-height: 1;
+        font-variant-numeric: tabular-nums; color: var(--accent);
+      }
+      .bpm .unit { font-size: 18px; color: var(--muted); }
+      .heart { font-size: 40px; animation: none; }
+      .heart.beating { animation: beat 0.85s ease-in-out infinite; }
+      @keyframes beat { 0%,100% { transform: scale(1);} 15% { transform: scale(1.22);} 30% { transform: scale(1);} }
+      .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+      .stat { background: var(--panel-2); border-radius: 12px; padding: 12px; text-align: center; }
+      .stat .n { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+      canvas { width: 100%; height: 160px; display: block; }
+      .meta { font-size: 13px; color: var(--muted); line-height: 1.7; }
+      .meta b { color: var(--text); font-weight: 600; }
+      .row { display: flex; justify-content: space-between; padding: 4px 0; }
+      footer { text-align: center; color: var(--muted); font-size: 12px; padding: 24px; }
+      a { color: var(--accent-2); }
+      .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="heart" id="headerHeart">❤</span>
+        <h1>fitbit-air</h1>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="dot" id="connDot"></span>
+        <span class="status-pill" id="statusPill">connecting…</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="grid">
+        <div class="card">
+          <h2>Live heart rate</h2>
+          <div class="bpm">
+            <span class="heart" id="bigHeart">❤</span>
+            <span class="value" id="bpm">--</span>
+            <span class="unit">bpm</span>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="n" id="minBpm">--</div><div class="l">min</div></div>
+            <div class="stat"><div class="n" id="avgBpm">--</div><div class="l">avg</div></div>
+            <div class="stat"><div class="n" id="maxBpm">--</div><div class="l">max</div></div>
+          </div>
+          <div class="hint" id="contactHint"></div>
+        </div>
+
+        <div class="card">
+          <h2>Device</h2>
+          <div class="meta" id="deviceMeta">
+            <div class="row"><span>Name</span><b id="devName">—</b></div>
+            <div class="row"><span>Address</span><b id="devAddr">—</b></div>
+            <div class="row"><span>Sensor</span><b id="devSensor">—</b></div>
+            <div class="row"><span>Battery</span><b id="devBattery">—</b></div>
+            <div class="row"><span>Session readings</span><b id="sessCount">0</b></div>
+          </div>
+          <div class="hint">
+            Enable heart-rate sharing on the Fitbit Air so it advertises over Bluetooth.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Last 2 minutes</h2>
+        <canvas id="chart" width="920" height="160"></canvas>
+      </div>
+
+      <div class="card" id="stepsCard" style="display:none;">
+        <h2>Today (Google Health)</h2>
+        <div class="meta">
+          <div class="row"><span>Steps</span><b id="steps">—</b></div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      Live data over Bluetooth (BLE Heart Rate Service 0x180D) · steps via Google Health API ·
+      <a href="https://github.com/">open source, MIT</a>
+    </footer>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const state = { readings: [], session: null };
+
+      // ---- WebSocket -----------------------------------------------------
+      function connect() {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${location.host}/ws`);
+        ws.onopen = () => setStatus('connected to server', false);
+        ws.onclose = () => { setStatus('reconnecting…', false); setTimeout(connect, 1500); };
+        ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+      }
+
+      function handle({ type, payload }) {
+        if (type === 'snapshot') {
+          if (payload.device) setDevice(payload.device);
+          if (payload.session) setSession(payload.session);
+          state.readings = (payload.recent || []).map((r) => r.bpm);
+          if (payload.lastReading) setBpm(payload.lastReading);
+          setStatus(payload.status, payload.status === 'streaming');
+          drawChart();
+        } else if (type === 'heartRate') {
+          setBpm(payload);
+          state.readings.push(payload.bpm);
+          if (state.readings.length > 120) state.readings.shift();
+          drawChart();
+        } else if (type === 'status') {
+          setStatus(payload.status, payload.status === 'streaming');
+        } else if (type === 'device') {
+          setDevice(payload);
+        } else if (type === 'battery') {
+          $('devBattery').textContent = payload + '%';
+        } else if (type === 'sensorLocation') {
+          $('devSensor').textContent = payload;
+        }
+      }
+
+      // ---- Rendering -----------------------------------------------------
+      function setStatus(text, streaming) {
+        $('statusPill').textContent = text;
+        $('connDot').classList.toggle('on', !!streaming);
+        $('bigHeart').classList.toggle('beating', !!streaming);
+        $('headerHeart').classList.toggle('beating', !!streaming);
+      }
+
+      function setBpm(r) {
+        $('bpm').textContent = r.bpm ?? '--';
+        if (r.contact === false) $('contactHint').textContent = '⚠ No skin contact detected.';
+        else $('contactHint').textContent = '';
+        // Pulse the heart in time with the beat.
+        if (r.bpm) {
+          const dur = Math.max(0.3, Math.min(1.5, 60 / r.bpm)) + 's';
+          $('bigHeart').style.animationDuration = dur;
+          $('headerHeart').style.animationDuration = dur;
+        }
+      }
+
+      function setSession(s) {
+        if (!s) return;
+        $('minBpm').textContent = s.minBpm ?? '--';
+        $('avgBpm').textContent = s.avgBpm ?? '--';
+        $('maxBpm').textContent = s.maxBpm ?? '--';
+        $('sessCount').textContent = s.count ?? 0;
+      }
+
+      function setDevice(d) {
+        if (!d) return;
+        $('devName').textContent = d.name || '(unnamed)';
+        $('devAddr').textContent = d.address || d.id || '—';
+        if (d.sensorLocation) $('devSensor').textContent = d.sensorLocation;
+        if (d.battery != null) $('devBattery').textContent = d.battery + '%';
+      }
+
+      // ---- Canvas chart (no external libs — works fully offline) ----------
+      function drawChart() {
+        const c = $('chart');
+        const ctx = c.getContext('2d');
+        const W = c.width, H = c.height, pad = 8;
+        ctx.clearRect(0, 0, W, H);
+        const data = state.readings;
+        if (data.length < 2) return;
+
+        const min = Math.min(...data) - 5;
+        const max = Math.max(...data) + 5;
+        const x = (i) => pad + (i / (data.length - 1)) * (W - pad * 2);
+        const y = (v) => H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
+
+        // gradient fill
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, 'rgba(255,77,109,0.35)');
+        grad.addColorStop(1, 'rgba(255,77,109,0)');
+        ctx.beginPath();
+        ctx.moveTo(x(0), y(data[0]));
+        data.forEach((v, i) => ctx.lineTo(x(i), y(v)));
+        ctx.lineTo(x(data.length - 1), H - pad);
+        ctx.lineTo(x(0), H - pad);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // line
+        ctx.beginPath();
+        ctx.moveTo(x(0), y(data[0]));
+        data.forEach((v, i) => ctx.lineTo(x(i), y(v)));
+        ctx.strokeStyle = '#ff4d6d';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // ---- Optional: pull today's steps from Google Health ----------------
+      async function loadSteps() {
+        try {
+          const health = await (await fetch('/api/health')).json();
+          if (!health.googleConfigured) return;
+          const res = await fetch('/api/steps');
+          if (!res.ok) return;
+          const data = await res.json();
+          $('stepsCard').style.display = '';
+          $('steps').textContent = data.steps?.toLocaleString?.() ?? data.steps ?? '—';
+        } catch { /* ignore */ }
+      }
+
+      connect();
+      loadSteps();
+      window.addEventListener('resize', drawChart);
+    </script>
+  </body>
+</html>
