@@ -9,8 +9,10 @@
 
 import { create } from 'zustand'
 import { connect, fetchRange } from '../lib/hrbridge.js'
+import { connectDevice, nativeHRSupported } from '../lib/hrble.js'
 import { seriesStats, zoneIndex } from '../lib/hrmetrics.js'
 import { useStore } from './useStore.js'
+import { MOBILE } from '../lib/mobile.js'
 
 // A reading older than this is not "your heart rate", it is the last thing we
 // heard before the strap fell off the treadmill. The badge greys out instead of
@@ -22,9 +24,11 @@ const MAX_SAMPLES = 14400
 
 let link = null
 let staleTimer = null
+let lingerTimer = null
 
 export const useHR = create((set, get) => ({
   on: false,             // is a session connection wanted right now
+  source: null,          // 'bridge' | 'ble' — which one is currently open
   state: 'off',          // off | connecting | reconnecting | live | waiting | offline | error
   detail: null,          // bridge-side status ('scanning', 'mixed-content', …)
   bpm: null,
@@ -35,22 +39,38 @@ export const useHR = create((set, get) => ({
   samples: [],           // { ms, bpm, rr? } ascending — this session only
   mark: 0,               // start of the segment the next completed set will claim
 
-  /** Open the live connection. Idempotent — safe to call on every render pass. */
-  start(base) {
+  /**
+   * Open the live connection. Idempotent — safe to call on every render pass.
+   * @param {{source?: 'bridge'|'ble', url?: string, device?: {id,name}}} cfg
+   */
+  start(cfg = {}) {
+    // A stop that was only lingering (see stopSoon) is cancelled here rather
+    // than allowed to fire mid-session and cut the feed you just came back for.
+    clearTimeout(lingerTimer); lingerTimer = null
     if (get().on) return
-    set({ on: true, state: 'connecting', samples: [], bpm: null, at: 0, stale: false })
-    link = connect(base, {
+    const source = sourceOf(cfg.source)
+    set({ on: true, source, state: 'connecting', detail: null, samples: [], bpm: null, at: 0, stale: false, device: null, battery: null })
+
+    const handlers = {
       onStatus: (state, detail) => set({ state, detail: detail || null }),
       onDevice: device => device && set({ device }),
       onBattery: battery => set({ battery }),
-      onSnapshot: snap => {
-        if (snap?.device) set({ device: snap.device })
-        // Back-fill the chart from what the bridge already has, so opening the
-        // app three sets into a session doesn't start the curve from nothing.
-        if (snap?.recent?.length) get()._ingest(snap.recent)
-      },
       onReading: r => get()._ingest([r])
-    })
+    }
+
+    link = source === 'ble'
+      ? connectDevice(cfg.device || {}, handlers)
+      : connect(cfg.url || '', {
+        ...handlers,
+        onSnapshot: snap => {
+          if (snap?.device) set({ device: snap.device })
+          // Back-fill the chart from what the bridge already has, so opening
+          // the app three sets in doesn't start the curve from nothing. The
+          // on-device source has no equivalent — nothing was listening before
+          // the phone connected.
+          if (snap?.recent?.length) get()._ingest(snap.recent)
+        }
+      })
     clearInterval(staleTimer)
     staleTimer = setInterval(() => {
       const { at, stale } = get()
@@ -61,11 +81,31 @@ export const useHR = create((set, get) => ({
   },
 
   stop() {
+    clearTimeout(lingerTimer); lingerTimer = null
     link?.close()
     link = null
     clearInterval(staleTimer)
     staleTimer = null
-    set({ on: false, state: 'off', detail: null, bpm: null, at: 0, stale: false, samples: [], mark: 0 })
+    // `samples` deliberately survives. Finishing a workout kicks off analysis
+    // passes that run for another minute (the last exercise's recovery is
+    // measured sixty seconds after its final set), and they read this array.
+    // It is cleared on the next start(), so nothing stale is ever shown.
+    set({ on: false, source: null, state: 'off', detail: null, bpm: null, at: 0, stale: false, mark: 0 })
+  },
+
+  /**
+   * Stop, but not yet.
+   *
+   * A workout ends the moment you tap finish, and the interesting part of the
+   * heart-rate trace starts right then: recovery is how far your pulse falls
+   * over the following minute. Tearing the connection down at `finish` would
+   * throw away the only window in which that can be measured — so the feed is
+   * held open a little longer and then let go. Calling start() cancels it.
+   */
+  stopSoon(delayMs = 90000) {
+    if (!get().on) return
+    clearTimeout(lingerTimer)
+    lingerTimer = setTimeout(() => { lingerTimer = null; get().stop() }, delayMs)
   },
 
   _ingest(rows) {
@@ -108,6 +148,10 @@ export const useHR = create((set, get) => ({
    * unreachable, so finishing a workout never fails on a network error.
    */
   async backfill(base, from, to) {
+    // Nothing to repair against when this device is the receiver: what the
+    // phone missed, nothing else was listening for. The samples it does have
+    // are the whole record.
+    if (get().source === 'ble') return get().samples
     try {
       const rows = await fetchRange(base, from, to)
       if (rows.length) {
@@ -124,7 +168,22 @@ export const useHR = create((set, get) => ({
   }
 }))
 
-/** The bridge address this profile is configured to use. */
-export const hrBase = () => useStore.getState().S.hr?.url || ''
+/**
+ * Which source a profile means. Stored as null until someone chooses, so the
+ * sensible default can follow the platform: the installed app reads the strap
+ * itself, and a browser talks to the bridge.
+ */
+export function sourceOf(pref) {
+  if (pref === 'ble') return nativeHRSupported() ? 'ble' : 'bridge'
+  if (pref === 'bridge') return 'bridge'
+  return MOBILE && nativeHRSupported() ? 'ble' : 'bridge'
+}
+
+/** Everything start() needs, read off the profile. */
+export function hrSession(S) {
+  const hr = S.hr || {}
+  return { source: sourceOf(hr.source), url: hr.url || '', device: hr.device || null }
+}
+
 /** Is heart rate switched on for this profile? */
 export const hrEnabled = () => !!useStore.getState().S.hr?.on

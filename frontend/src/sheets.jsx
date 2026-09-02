@@ -959,14 +959,19 @@ export function heartRateSheet() {
 }
 function HeartRatePanel({ close }) {
   const st = useStore(s => s.S)
-  const { state, detail, bpm, stale, device, battery, samples } = useHR()
+  const { state, detail, source, bpm, stale, device, battery, samples } = useHR()
   const live = bpm > 0 && !stale
   const cfg = hrConfig(st)
+  const ble = source === 'ble'
   const line = state === 'live' && live ? t('Live from {0}', device?.name || t('your device'))
-    : state === 'waiting' ? t('Bridge is up, but no heart-rate device is broadcasting yet.')
-      : detail === 'mixed-content' ? t('This page is HTTPS and the bridge is plain HTTP — the browser blocks it. Serve the bridge over the same origin, or open openGym over HTTP.')
-        : state === 'live' ? t('Connected — waiting for the first reading.')
-          : t('Not connected. Start the bridge with `npm start` in hr-bridge/, then check the address in Settings.')
+    : detail === 'bluetooth-off' ? t('Bluetooth is switched off on this device.')
+      : detail === 'no-device' ? t('No strap paired yet — pair one in Settings.')
+        : detail === 'pairing-required' ? t('Your device wants to be paired first. Accept the pairing prompt, or pair it once in your system Bluetooth settings, then try again.')
+          : state === 'waiting' ? t('Bridge is up, but no heart-rate device is broadcasting yet.')
+            : detail === 'mixed-content' ? t('This page is HTTPS and the bridge is plain HTTP — the browser blocks it. Serve the bridge over the same origin, or open openGym over HTTP.')
+              : state === 'live' ? t('Connected — waiting for the first reading.')
+                : ble ? t('Not connected. Turn on heart-rate sharing on your device so it starts broadcasting, and keep it close.')
+                  : t('Not connected. Start the bridge with `npm start` in hr-bridge/, then check the address in Settings.')
   return <>
     <h3>{t('Heart rate')}</h3>
     <div className="row" style={{ gap: 14, alignItems: 'baseline', marginBottom: 4 }}>

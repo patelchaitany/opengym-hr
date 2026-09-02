@@ -9,6 +9,8 @@
 over Bluetooth. This is the two of them wired together: live bpm on the workout screen, and
 every set you log carries what your heart was doing while you did it.
 
+The Android app reads your strap over its **own** Bluetooth radio — no laptop at the gym.
+
 ![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-a3e635?style=flat-square)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-%F0%9F%8F%A0-60a5fa?style=flat-square)
 ![Bluetooth](https://img.shields.io/badge/BLE-0x180D-ff453a?style=flat-square)
@@ -28,6 +30,8 @@ Stock openGym records what you lifted. This records what it cost you.
 - **Live bpm on the workout screen** — a strip under the progress bar showing your rate, the
   zone it puts you in, a rolling two-minute trace, and what the set currently under way is
   doing. The heart glyph beats at your actual rate.
+- **Two sources**, chosen per profile: this device's own Bluetooth, or a bridge on your
+  network. See [Two ways to get a pulse in](#two-ways-to-get-a-pulse-in).
 - **Every set carries its own heart rate** — average, peak and minimum over the window between
   the end of your last rest and the moment you tick the box.
 - **Every exercise gets a rollup** — average and peak across its sets, shown right under the
@@ -47,26 +51,42 @@ Stock openGym records what you lifted. This records what it cost you.
 <em>♥ live bpm · per-set capture · zones · strain · HRV · recovery</em>
 </div>
 
-## How it fits together
+## Two ways to get a pulse in
+
+Both speak the same thing — the Bluetooth SIG **Heart Rate Profile** (`0x180D` / `0x2A37`),
+the standard one that Peloton, Zwift and gym treadmills use. Pick per profile in
+Settings → Heart rate → **Read from**.
+
+**This device** — the phone's own radio talks to the strap. Nothing else to run, nothing else
+to carry. The default in the Android app, and available in Chrome and Edge via Web Bluetooth.
 
 ```
-  Fitbit Air / any BLE strap
-        │  Bluetooth Heart Rate Profile (0x180D) — the standard one,
-        │  the same profile Peloton and gym equipment use
-        ▼
-  hr-bridge  (Node, runs on your machine — it needs the radio)
-        │  ws://…/ws          every beat, live
-        │  GET /api/heart-rate/range   every beat, after the fact
-        ▼
-  openGym frontend  (React PWA)
-        │  live strip · per-set windows · zone maths
+  Fitbit Air / any BLE strap ──0x180D──▶ openGym  (src/lib/hrble.js)
+```
+
+**Bridge** — a computer does the Bluetooth and serves the numbers over your network. Worth it
+for one reason: a mains-powered machine keeps listening while your phone's screen is off, and
+its history can be re-read after the fact, so a set you didn't watch still gets right numbers.
+
+```
+  Fitbit Air ──0x180D──▶ hr-bridge (Node) ──┬─ ws://…/ws  every beat, live
+                                            └─ /api/heart-rate/range  every beat, after the fact
+                                                       │
+                                                       ▼
+                                              openGym  (src/lib/hrbridge.js)
+```
+
+Either way the rest is identical:
+
+```
+  openGym frontend  →  live strip · per-set windows · zone maths
         ▼
   openGym api  →  ./data/state-<you>.json
 ```
 
-Three processes, one origin: nginx serves the app, proxies `/api` to the openGym backend and
-`/hr` to the bridge. That last one is why a phone needs no address, no CORS exception and no
-mixed-content workaround — everything is same-origin.
+For the bridge path, nginx serves the app and proxies `/api` to the openGym backend and `/hr`
+to the bridge — one origin, so a phone needs no address, no CORS exception and no
+mixed-content workaround.
 
 ## Quick start
 
@@ -115,7 +135,7 @@ like the built app. Exercise images and GIFs are served straight from `./media` 
 static server to remember to start.
 
 ```bash
-cd frontend && npm test          # 244 tests, 48 of them the heart-rate maths
+cd frontend && npm test          # 255 tests, 59 of them heart-rate maths and packet parsing
 ```
 
 ## How the numbers get made
@@ -174,11 +194,25 @@ collects.
 
 ## The Android app
 
-`openGym HR` installs alongside a stock openGym (different application id). The installed app
-has no server of its own, so the bridge address **must** be filled in with your machine's LAN
-address. The build permits cleartext HTTP for exactly that reason — see
-[`network_security_config.xml`](frontend/android/app/src/main/res/xml/network_security_config.xml)
-for what that does and does not open up.
+`openGym HR` installs alongside a stock openGym — different application id, launcher name and
+deep-link scheme.
+
+**It reads your strap directly.** Turn on heart-rate sharing on the Fitbit Air, then
+Settings → Heart rate → on → **Pair**, and pick it from the system dialog. It is remembered and
+reconnects at the start of every workout. No laptop, no Wi-Fi, no address to type.
+
+Android asks only for **Nearby devices**, never location: `BLUETOOTH_SCAN` is declared
+`neverForLocation`, and the location permissions the BLE plugin's own manifest would otherwise
+merge in uncapped are overridden back to `maxSdkVersion="30"`.
+
+The bridge source still works from the app if you want it — it needs the bridge's LAN address
+in Settings, and the build permits cleartext HTTP for that, see
+[`network_security_config.xml`](frontend/android/app/src/main/res/xml/network_security_config.xml).
+
+**One caveat with on-device Bluetooth.** The phone is the receiver, so anything it misses is
+missed — there is no history to re-read afterwards. openGym holds a wake lock during a
+workout, so a screen you glance at is fine, but a phone locked in a bag for ten minutes will
+leave a gap. The bridge does not have this problem, which is why both sources exist.
 
 Prebuilt APKs are on the [releases page](https://github.com/patelchaitany/opengym-hr/releases).
 To build your own:
@@ -202,6 +236,7 @@ hr-bridge/          fitbit-air: BLE → REST + WebSocket, plus a simulator
   src/server/       server.js · sessions.js (the time-range history)
 frontend/           openGym's React PWA
   src/lib/hrmetrics.js    all the maths, pure and tested
+  src/lib/hrble.js        this device's own radio — 0x2A37 parser + GATT
   src/lib/hrbridge.js     WebSocket + range client, auto-reconnecting
   src/store/useHR.js      live session state (kept out of the synced store)
   src/components/HeartRate.jsx   the strip, the zone bar, the summary
@@ -216,10 +251,11 @@ time-indexed history buffer with `/api/heart-rate/range` and `/api/heart-rate/st
 `@abandonware/noble` moved to an optional dependency, so the bridge installs and runs on a
 machine with no Bluetooth stack at all.
 
-**frontend** (from openGym): the heart-rate library, client, store and components above; the
-workout screen's live strip and per-set capture; the finish-time analysis; heart rate in the
-finish summary and in workout detail; the Settings card; and a dev server that serves exercise
-media from `./media` instead of expecting a static server nobody starts.
+**frontend** (from openGym): the heart-rate library, both clients, the store and the components
+above; the workout screen's live strip and per-set capture; the finish-time analysis; heart
+rate in the finish summary and in workout detail; the Settings card; Bluetooth permissions and
+an on-device BLE source for the Android build; and a dev server that serves exercise media
+from `./media` instead of expecting a static server nobody starts.
 
 ## Credits & licence
 

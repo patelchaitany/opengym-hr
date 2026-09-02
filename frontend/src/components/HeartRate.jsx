@@ -124,7 +124,7 @@ export function HRWorkoutChart({ hr, h = 130 }) {
  */
 export function HRStrip({ from, onClick }) {
   const S = useStore(s => s.S)
-  const { bpm, stale, state, samples } = useHR()
+  const { bpm, stale, state, detail, source, samples } = useHR()
   const [, tick] = useState(0)
   useEffect(() => {
     const iv = setInterval(() => tick(n => n + 1), 2000)
@@ -138,14 +138,18 @@ export function HRStrip({ from, onClick }) {
   const setStats = from ? seriesStats(samples, from, Date.now()) : { n: 0 }
   const spark = samples.slice(-120)
 
-  // Not live: say which kind of not-live it is. "Looking for your strap" and
-  // "the bridge isn't running" send you to different places, and a single
-  // greyed-out heart sends you to neither.
-  const trouble = state === 'error' ? t('Bridge unreachable')
-    : state === 'offline' ? t('Bridge offline')
-      : state === 'connecting' || state === 'reconnecting' ? t('Connecting…')
-        : state === 'waiting' ? t('Looking for your strap…')
-          : stale ? t('Signal lost') : null
+  // Not live: say which kind of not-live it is. "Looking for your strap",
+  // "Bluetooth is off" and "the bridge isn't running" send you to three
+  // different places, and a single greyed-out heart sends you to none of them.
+  const ble = source === 'ble'
+  const trouble = detail === 'bluetooth-off' ? t('Bluetooth is off')
+    : detail === 'no-device' ? t('No strap paired')
+      : detail === 'pairing-required' ? t('Pair your strap in system settings')
+        : state === 'error' ? (ble ? t('Bluetooth unavailable') : t('Bridge unreachable'))
+          : state === 'offline' ? (ble ? t('Strap not found') : t('Bridge offline'))
+            : state === 'connecting' || state === 'reconnecting' ? t('Connecting…')
+              : state === 'waiting' ? t('Looking for your strap…')
+                : stale ? t('Signal lost') : null
 
   return (
     <button className={'hrstrip' + (live ? '' : ' off')} style={{ '--hrz': zoneColor(z) }} onClick={onClick}>

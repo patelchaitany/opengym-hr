@@ -14,6 +14,8 @@ import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField, NumberField } from '../components/ui.jsx'
 import { fetchInfo, DEFAULT_BASE, httpBase } from '../lib/hrbridge.js'
+import { nativeHRSupported, pickDevice, bluetoothEnabled, requestBluetooth } from '../lib/hrble.js'
+import { sourceOf } from '../store/useHR.js'
 import { maxHRFor, maxHRIsEstimated } from '../lib/hrmetrics.js'
 import { HRZoneTable } from '../components/HeartRate.jsx'
 
@@ -378,6 +380,27 @@ function HeartRateCard({ S, update, toast }) {
   const [probe, setProbe] = useState(null)   // { ok, text }
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState(hr.url || '')
+  const canNative = nativeHRSupported()
+  const source = sourceOf(hr.source)
+  const ble = source === 'ble'
+
+  // Pairing has to start from a tap: Web Bluetooth refuses a picker that
+  // wasn't opened by a user gesture, and on a phone it would be rude anyway.
+  const chooseStrap = async () => {
+    setBusy(true); setProbe(null)
+    try {
+      if ((await bluetoothEnabled()) === false) await requestBluetooth()
+      const device = await pickDevice()
+      update(s => { s.hr = { ...s.hr, device } })
+      setProbe({ ok: true, text: t('Paired with {0}.', device.name || t('your strap')) })
+    } catch (e) {
+      // Dismissing the picker is a decision, not a failure — say nothing.
+      const name = e?.name || ''
+      if (name !== 'NotFoundError' && name !== 'AbortError') {
+        setProbe({ ok: false, text: t('Could not pair: {0}', e?.message || t('unknown error')) })
+      }
+    } finally { setBusy(false) }
+  }
 
   const test = async () => {
     setBusy(true); setProbe(null)
@@ -398,12 +421,38 @@ function HeartRateCard({ S, update, toast }) {
 
   return <>
     <Section title={t('Heart rate')}
-      footer={t('Live bpm during every set, recorded per exercise. Needs the hr-bridge service running next to your Fitbit Air (or any Bluetooth heart-rate strap).')}>
+      footer={ble
+        ? t('Live bpm during every set, recorded per exercise. This device reads your Fitbit Air (or any Bluetooth heart-rate strap) over Bluetooth — nothing else to run.')
+        : t('Live bpm during every set, recorded per exercise. Needs the hr-bridge service running on a machine paired with your Fitbit Air (or any Bluetooth heart-rate strap).')}>
       <Row icon="heart" iconTint="var(--red)" title={t('Capture heart rate')}
         subtitle={hr.on ? t('Connects while a workout is running.') : null}>
         <Switch checked={!!hr.on} onChange={v => update(s => { s.hr = { ...s.hr, on: v } })} />
       </Row>
-      {hr.on && <>
+      {/* Two ways to get a pulse into the app, and which one you want depends
+          on what you carry to the gym. Only offered where both actually work —
+          a browser without Web Bluetooth has one option and no choice to make. */}
+      {hr.on && canNative && (
+        <Row icon="bolt" iconTint="var(--teal)" title={t('Read from')}>
+          <Segmented className="seg-inline"
+            options={[{ value: 'ble', label: t('This device') }, { value: 'bridge', label: t('Bridge') }]}
+            value={source} onChange={v => update(s => { s.hr = { ...s.hr, source: v } })} />
+        </Row>
+      )}
+      {hr.on && ble && <>
+        <Row icon="heart" iconTint="var(--pink)"
+          title={hr.device?.name || (hr.device ? t('Paired strap') : t('No strap paired'))}
+          subtitle={hr.device ? t('Reconnects on its own at the start of each workout.') : t('Turn on heart-rate sharing on your device first, so it starts broadcasting.')}>
+          <Button size="sm" icon={hr.device ? 'reset' : 'plus'} disabled={busy} onClick={chooseStrap}>
+            {busy ? t('Scanning…') : hr.device ? t('Change') : t('Pair')}
+          </Button>
+        </Row>
+        {probe && <div className="lrow" style={{ paddingTop: 4, paddingBottom: 12 }}>
+          <span className={'small ' + (probe.ok ? 'accent' : '')} style={probe.ok ? null : { color: 'var(--red)' }}>{probe.text}</span>
+        </div>}
+        {hr.device && <Row icon="trash" iconTint="var(--red)" title={t('Forget this strap')} danger
+          onClick={() => { update(s => { s.hr = { ...s.hr, device: null } }); setProbe(null) }} />}
+      </>}
+      {hr.on && !ble && <>
         <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10, paddingTop: 13, paddingBottom: 14 }}>
           <span className="lrow-t">{t('Bridge address')}</span>
           <TextField value={draft} inputMode="url"

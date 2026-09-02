@@ -29,7 +29,12 @@ export const DEF = {
   //             not carry it in every profile sync.
   // Sex isn't asked for here — the sex-specific formulae read `body`, which
   // Settings already collects for the muscle map.
-  hr: { on: false, url: '', maxBpm: null, restBpm: 60, age: null, series: true }
+  //   source  — 'ble' reads the strap with this device's own Bluetooth radio;
+  //             'bridge' has a computer do it and sends the numbers over the
+  //             network. null picks per platform: the installed app reads the
+  //             strap itself, a browser uses the bridge.
+  //   device  — the strap picked for the 'ble' source, { id, name }
+  hr: { on: false, source: null, device: null, url: '', maxBpm: null, restBpm: 60, age: null, series: true }
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

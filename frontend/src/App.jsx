@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from './store/useStore.js'
-import { useHR } from './store/useHR.js'
+import { useHR, hrSession } from './store/useHR.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
@@ -54,12 +54,17 @@ function Shell() {
   // screen, so stepping over to Stats between sets doesn't drop the feed and
   // punch a hole in the session's heart-rate series.
   const hrOn = !!S.active && !!S.hr?.on
-  const hrUrl = S.hr?.url || ''
+  // Serialised so the effect re-runs when the source, strap or address changes
+  // but not on every unrelated edit to the profile.
+  const hrKey = JSON.stringify(hrSession(S))
   useEffect(() => {
     if (!hrOn) return
-    useHR.getState().start(hrUrl)
-    return () => useHR.getState().stop()
-  }, [hrOn, hrUrl])
+    useHR.getState().start(JSON.parse(hrKey))
+    // stopSoon, not stop: finishing a workout starts analysis passes that run
+    // for another minute, and the last exercise's recovery is measured from
+    // beats that arrive after the finish button. See useHR.stopSoon.
+    return () => useHR.getState().stopSoon()
+  }, [hrOn, hrKey])
 
   const authed = user || isGuest
   if (!ready && !authed) return (

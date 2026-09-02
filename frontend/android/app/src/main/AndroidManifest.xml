@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -37,4 +38,45 @@
          on Android 12+. Where it isn't granted, scheduling silently falls back to inexact
          alarms — the reminder still arrives, just not to the minute. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Reading a heart-rate strap over Bluetooth Low Energy.
+
+         neverForLocation is the important flag: Android treats a BLE scan as a
+         way to work out where someone is (the set of radios around you is a
+         fingerprint of a place), so without it the app would have to ask for
+         location permission just to count heartbeats. Asserting that we never
+         derive location from scan results — which is true, the app looks for
+         one characteristic on one device — keeps that prompt off the screen.
+
+         The three legacy permissions are capped at API 30: from API 31 they are
+         replaced by BLUETOOTH_SCAN/CONNECT above, and leaving them uncapped
+         would ask newer phones for location for no reason. minSdk here is 23,
+         so they still matter for older ones. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- tools:node="replace" is load-bearing, not decoration. The BLE plugin's
+         own manifest declares both location permissions with no maxSdkVersion,
+         and the merger unions them in — so without these two lines the app ends
+         up asking Android 12+ for location, which is exactly the prompt the
+         neverForLocation flag above exists to avoid. Replacing the plugin's
+         declarations caps them at API 30, where they were genuinely required to
+         scan and where BLUETOOTH_SCAN does not yet exist. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" tools:node="replace" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30" tools:node="replace" />
+
+    <!-- Bluetooth LE is required to read a strap directly, but the app is still
+         perfectly usable without it (log your sets, or use the hr-bridge source
+         over the network), so these are declared not-required rather than
+         fencing the app off from devices that lack them. Location hardware is
+         listed only because the capped permissions above would otherwise have
+         aapt infer it as required. -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 </manifest>
