@@ -14,6 +14,11 @@ every set you log carries what your heart was doing while you did it.
 ![Bluetooth](https://img.shields.io/badge/BLE-0x180D-ff453a?style=flat-square)
 ![PWA](https://img.shields.io/badge/PWA-installable-a78bfa?style=flat-square)
 
+### [⬇ Download the Android app](https://github.com/patelchaitany/opengym-hr/releases/latest)
+
+<sub>Debug build, sideload only. It needs the bridge's LAN address filled in — see
+[The Android app](#the-android-app).</sub>
+
 </div>
 
 ## What it adds
@@ -175,13 +180,19 @@ address. The build permits cleartext HTTP for exactly that reason — see
 [`network_security_config.xml`](frontend/android/app/src/main/res/xml/network_security_config.xml)
 for what that does and does not open up.
 
+Prebuilt APKs are on the [releases page](https://github.com/patelchaitany/opengym-hr/releases).
+To build your own:
+
 ```bash
 cd frontend
-npm run build:mobile
+npm run build:android                     # not build:mobile — that also syncs iOS,
+                                          # which needs CocoaPods installed
 cd android && ./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Needs JDK 17 or 21 (not 25 — Gradle 8.11 / AGP 8.7 won't take it) and Android SDK 35.
+The result is a debug build signed with the standard Android debug key: sideloadable,
+not shippable.
 
 ## Layout
 
