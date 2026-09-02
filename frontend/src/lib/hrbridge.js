@@ -16,6 +16,8 @@
 // handing out a pulse, and adding a login to it would mean a second set of
 // credentials for a number your gym's treadmill will also happily broadcast.
 
+import { MOBILE } from './mobile.js'
+
 // Same-origin by default: the nginx in front of openGym proxies /hr to the
 // bridge, so the phone needs no address and no CORS. An explicit URL in
 // Settings (http://192.168.1.20:3001) is for running the app straight from
@@ -42,7 +44,15 @@ export function wsUrl(url) {
 // A page served over HTTPS cannot open ws:// or fetch http:// — the browser
 // drops it with no useful error. Worth naming, because "bridge offline" is the
 // wrong diagnosis and sends people looking at their strap.
+//
+// The native build is the exception, and it matters: Capacitor serves the app
+// from https://localhost, and the bridge on your LAN is plain http, so this
+// would refuse every connection the Android app will ever make. There the
+// WebView is explicitly configured to allow it (android.allowMixedContent in
+// capacitor.config.json, plus network_security_config.xml), so the block this
+// is warning about does not apply.
 export function mixedContentBlocked(url) {
+  if (MOBILE) return false
   const b = httpBase(url)
   return location.protocol === 'https:' && b.startsWith('http:')
 }
